@@ -67,6 +67,9 @@ export function VideoPlayer({
     api.userData.getHistoryEntry,
     user.signedIn ? { mediaType, tmdbId } : "skip"
   );
+  // Apply the stored resume point ONCE per mount — live history updates must
+  // never re-trigger the resume dialog mid-playback.
+  const resumeAppliedRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -147,7 +150,10 @@ export function VideoPlayer({
 
   // --- resume ---------------------------------------------------------------
   useEffect(() => {
+    if (resumeAppliedRef.current) return;
     const entry = resumeEntry;
+    if (entry === undefined) return; // query still loading
+    resumeAppliedRef.current = true;
     if (!entry || entry.completed) return;
     if (entry.seasonNumber !== undefined && currentEpisode && entry.seasonNumber !== currentEpisode.seasonNumber) return;
     if (entry.progress > 10) setResumeOffer(entry.progress);

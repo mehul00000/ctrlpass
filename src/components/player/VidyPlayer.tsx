@@ -48,6 +48,10 @@ export function VidyPlayer({ mediaType, tmdbId, title, season, episode }: Props)
   const [resumeAt, setResumeAt] = useState<number | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastSaveRef = useRef(0);
+  // Apply the stored resume point ONCE per mount. Re-applying it on every
+  // history save would change the embed URL and remount the player
+  // (black-screen → restart loop).
+  const resumeAppliedRef = useRef(false);
 
   // Resume from stored history, then build the embed URL with the documented
   // query flags.
@@ -74,12 +78,14 @@ export function VidyPlayer({ mediaType, tmdbId, title, season, episode }: Props)
     return () => clearTimeout(t);
   }, [loaded, url]);
 
-  // Fetch the stored resume point for this title (or episode).
+  // Fetch the stored resume point for this title (or episode) — applied once
+  // per mount; live history updates must never remount the player.
   useEffect(() => {
+    if (resumeAppliedRef.current) return;
     const entry = resumeEntry;
-    if (!entry || entry.completed) return;
-    if (mediaType === "tv" && entry.seasonNumber !== undefined && entry.seasonNumber !== (season ?? 1)) return;
-    if (entry.progress > 10) setResumeAt(entry.progress);
+    if (entry === undefined) return; // query still loading
+    resumeAppliedRef.current = true;
+    if (entry && !entry.completed && entry.progress > 10) setResumeAt(entry.progress);
   }, [resumeEntry, mediaType, season]);
 
   // PLAYER_EVENT listener — persists real playback progress into history.
