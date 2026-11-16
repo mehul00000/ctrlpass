@@ -1,0 +1,10 @@
+{
+  "name": "YtReactNative",
+  "displayName": "CtrlPass",
+  "expo": {
+    "scheme": "ctrlpass",
+    "version": "1.0.0",
+    "icon": "./assets/brand/app-icon.png",
+    "backgroundColor": "#050505"
+  }
+}

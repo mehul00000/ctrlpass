@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>CtrlPass concept C - Gate Monogram</title>
+  <!-- C "Gate Monogram": open C-ring (60 deg mouth) with P fused to its upper terminal -->
+  <path fill="#000" fill-rule="evenodd" d="M168 55.3 A84 84 0 1 0 168 200.7 L152 173 A52 52 0 1 1 152 83 Z"/>
+  <path fill="#000" d="M148 55 H172 V162 H148 Z"/>
+  <path fill="#000" d="M160 55 H172 A30 30 0 0 1 172 115 H160 Z M172 100 A15 15 0 0 0 172 70 Z"/>
+</svg>

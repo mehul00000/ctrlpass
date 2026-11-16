@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>CtrlPass app icon</title>
+  <!-- gold mark on the brand surface, iOS-style corner radius -->
+  <rect width="256" height="256" rx="58" fill="#111111"/>
+  <g transform="translate(128 132) scale(0.72) translate(-128 -128)">
+    <path fill="#D6B47A" fill-rule="evenodd" d="M197.3 73.8 A88 88 0 1 0 197.3 182.2 L172.1 162.5 A56 56 0 1 1 172.1 93.5 Z"/>
+    <path fill="#E4C98F" d="M122.9 78.9 L183.2 128 L122.9 177.1 L105.1 152.9 L132.8 128 L105.1 103.1 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,278 @@
+/* Hallmark · kiln: ember · redesign full · draw 83a04f · job: attend · nav: banner over a retracting bar · footer: letter close · imagery: photographs, library 4, kiln treatment · posture: full-palette (at) */
+/* Hallmark · waive 49b · the credit is the author’s own name, a fact that cannot shorten · it wraps once inside the credits line at 375, two lines at most */
+/* Hallmark · dismissed 76 · the Photographs line is rendered by Footer.tsx with author, licence and link for every library photo, verified in the served HTML and the sweep screenshots · the static tier cannot see across component imports */
+/* Hallmark · hero-review: fix · 3 findings · 3 resolved (admin demoted, placeholder shortened, hero slot data-alt) */
+/* Hallmark · answered F3 · balance kept only on the two heads that wrap; inert on one-line heads */
+/* pre-emit critique: P4 H4 E4 S4 R4 V5 · weakest: E, first kiln pass through a Tailwind codebase — every literal tokenized and gate-checked before the sweep */
+
+@import url('https://api.fontshare.com/v2/css?f[]=boska@500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+
+  /* kiln: ember — brand accent kept at the champagne gold, read from brand.ts history */
+  --color-paper: oklch(13% 0.012 40);
+  --color-paper-2: oklch(17.5% 0.016 40);
+  --color-paper-3: oklch(22% 0.018 40);
+  --color-ink: oklch(94% 0.02 80);
+  --color-ink-2: oklch(84% 0.025 70);
+  --color-muted: oklch(72% 0.03 60);
+  --color-rule: oklch(96% 0.01 80 / 0.12);
+  --color-accent: oklch(78% 0.077 85);
+  --color-accent-ink: oklch(14% 0.02 40);
+  --color-focus: oklch(84% 0.09 85);
+
+  --font-display: 'Boska', 'Iowan Old Style', Georgia, serif;
+  --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-outlier: 'Geist Mono', ui-monospace, monospace;
+
+  --radius-card: 28px;
+  --radius-well: 16px;
+  --radius-pill: 999px;
+  --rule-hair: 1px;
+  --shadow-card: 0 50px 90px -30px oklch(8% 0.01 40 / 0.5);
+  --tracking-display: -0.02em;
+  --display-weight: 500;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-short: 150ms;
+  --dur-long: 450ms;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 120px;
+  --space-11: 160px;
+
+  /* HSL triplets for pasted components that compose hsl(var(--token)/alpha) */
+  --foreground: 0 0% 100%;
+  --muted: 0 0% 10%;
+  --destructive: 3 84% 68%;
+  --warning: 34 92% 50%;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: clip;
+  scrollbar-color: var(--color-paper-3) var(--color-paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  overflow-x: clip;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  line-height: 1.04;
+  letter-spacing: var(--tracking-display);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+}
+
+/* kiln photo treatment on every slotted picture */
+[data-slot] > img {
+  filter: sepia(0.5) saturate(0.88) contrast(1.08) brightness(0.94);
+}
+
+/* kiln photograph frame: 28px radius, 1px inset ring of cream at 8% */
+.photo {
+  border-radius: min(2vw, var(--radius-card));
+  outline: var(--rule-hair) solid color-mix(in oklab, var(--color-ink) 8%, transparent);
+  outline-offset: -1px;
+}
+
+/* ── Shared controls ───────────────────────────────────────────── */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 50px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 150ms ease-out;
+}
+.btn-primary:hover { background: color-mix(in oklab, var(--color-accent) 88%, white); }
+.btn-primary:active { background: color-mix(in oklab, var(--color-accent) 80%, black); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 50px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 var(--rule-hair) var(--color-rule);
+  transition: box-shadow 150ms ease-out, background-color 150ms ease-out;
+}
+.btn-ghost:hover { background: var(--color-paper-2); }
+.btn-ghost:active { background: var(--color-paper-3); }
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.well {
+  background: var(--color-paper-2);
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-well);
+}
+
+/* ── Animated icons (lucide-react) ─────────────────────────────── */
+
+.animated-icon { will-change: transform, opacity; }
+
+@keyframes icon-wipe { from { clip-path: inset(0 100% 0 0); opacity: .35; } to { clip-path: inset(0 0 0 0); opacity: 1; } }
+@keyframes icon-spin { to { transform: rotate(360deg); } }
+@keyframes icon-pulse { 50% { transform: scale(1.12); } }
+@keyframes icon-nudge-x { 45% { transform: translateX(3px); } }
+@keyframes icon-ring { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-12deg); } 60% { transform: rotate(10deg); } }
+
+.group:hover .animated-icon-draw,
+.group:focus-within .animated-icon-draw,
+.animated-icon-draw.is-playing { animation: icon-wipe 450ms var(--ease-out, ease-out) both; }
+
+.group:hover .animated-icon-spin,
+.group:focus-within .animated-icon-spin,
+.animated-icon-spin.is-playing { animation: icon-spin 500ms var(--ease-out, ease-out); }
+
+.group:hover .animated-icon-pulse,
+.group:focus-within .animated-icon-pulse,
+.animated-icon-pulse.is-playing { animation: icon-pulse 450ms var(--ease-out, ease-out); }
+
+.group:hover .animated-icon-nudge-x,
+.group:focus-within .animated-icon-nudge-x,
+.animated-icon-nudge-x.is-playing { animation: icon-nudge-x 400ms var(--ease-out, ease-out); }
+
+.group:hover .animated-icon-ring,
+.group:focus-within .animated-icon-ring,
+.animated-icon-ring.is-playing { animation: icon-ring 500ms var(--ease-out, ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-icon { animation: none !important; }
+}
+
+/* ── Legacy shared utilities, re-expressed in tokens ──────────── */
+
+.ember-sky {
+  background:
+    radial-gradient(46% 38% at 14% 0%, oklch(94% 0.02 80 / 0.07) 0%, transparent 62%),
+    radial-gradient(36% 30% at 86% 10%, oklch(70% 0.2 45 / 0.06) 0%, transparent 60%),
+    radial-gradient(90% 70% at 50% 115%, oklch(94% 0.02 80 / 0.04) 0%, transparent 65%);
+}
+
+.ember-glow {
+  background: radial-gradient(closest-side, oklch(70% 0.2 45 / 0.09), transparent 70%);
+}
+
+@keyframes ember-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+.ember-drift {
+  animation: ember-drift 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ember-drift { animation: none; }
+}
+
+/* Fixed film grain — pointer-transparent, covers the page uniformly. */
+.ember-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.glass-panel {
+  background-color: color-mix(in oklab, var(--color-paper) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.glass-card {
+  background-color: var(--color-paper-2);
+  border: var(--rule-hair) solid var(--color-rule);
+  transition: border-color 250ms cubic-bezier(0.16, 1, 0.3, 1), transform 250ms cubic-bezier(0.16, 1, 0.3, 1), background-color 250ms;
+}
+
+.glass-card:hover {
+  border-color: color-mix(in oklab, var(--color-accent) 45%, transparent);
+  transform: translateY(-2px);
+  background-color: var(--color-paper-3);
+}
+
+.glow-orange {
+  box-shadow: 0 0 60px -12px oklch(94% 0.02 80 / 0.22);
+}
+
+.badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Outlined display type used in the scroll story */
+.text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px oklch(94% 0.02 80 / 0.22);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

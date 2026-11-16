@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>CtrlPass</title>
+  <!-- single-colour ink for light backgrounds -->
+  <path fill="#111111" fill-rule="evenodd" d="M197.3 73.8 A88 88 0 1 0 197.3 182.2 L172.1 162.5 A56 56 0 1 1 172.1 93.5 Z"/>
+  <path fill="#111111" d="M122.9 78.9 L183.2 128 L122.9 177.1 L105.1 152.9 L132.8 128 L105.1 103.1 Z"/>
+</svg>
