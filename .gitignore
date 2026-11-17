@@ -53,3 +53,6 @@ yarn-error.log*
 
 # Supabase CLI local state
 supabase/.temp/
+
+# Local Netlify folder
+.netlify
