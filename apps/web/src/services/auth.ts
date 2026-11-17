@@ -1,38 +1,27 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { api } from "../../../../convex/_generated/api";
+import { authedClient } from "@/lib/convex";
 
-export type AppRole = 'ATTENDEE' | 'VOLUNTEER' | 'ORGANIZER' | 'ADMIN';
+export type AppRole = "ATTENDEE" | "VOLUNTEER" | "ORGANIZER" | "ADMIN";
 
-export async function getSession(client: SupabaseClient) {
-  const { data, error } = await client.auth.getSession();
-  if (error) throw error;
-  return data.session;
-}
-
-export async function getRoles(client: SupabaseClient, userId: string): Promise<AppRole[]> {
-  const { data, error } = await client
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .eq('status', 'ACTIVE');
-  if (error) throw error;
-  return (data ?? []).map((row) => row.role as AppRole);
+/**
+ * Role helpers — identity now lives in Clerk; roles live in the Convex
+ * user_roles table, fetched through the `users.me` query.
+ */
+export async function getRolesForCurrentUser(): Promise<AppRole[]> {
+  const me = await (await authedClient()).query(api.users.me, {});
+  const roles = (me as any)?.roles ?? [];
+  return roles.map((r: any) => r.role as AppRole);
 }
 
 export function hasAnyRole(roles: AppRole[], allowed: AppRole[]) {
   return allowed.some((role) => roles.includes(role));
 }
 
-export async function requireRole(client: SupabaseClient, allowed: AppRole[]) {
-  const {
-    data: { user },
-    error: userError,
-  } = await client.auth.getUser();
-  if (userError) throw userError;
-  if (!user) throw new Error('Not authenticated');
-
-  const roles = await getRoles(client, user.id);
+export async function requireRole(allowed: AppRole[]) {
+  const me = await (await authedClient()).query(api.users.me, {});
+  const roles = ((me as any)?.roles ?? []).map((r: any) => r.role as AppRole);
   if (!hasAnyRole(roles, allowed)) {
-    throw new Error('Insufficient permissions');
+    throw new Error("Insufficient permissions");
   }
-  return { user, roles };
+  return { me, roles };
 }

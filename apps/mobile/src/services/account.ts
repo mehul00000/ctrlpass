@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { isSupabaseConfigured } from '../config/env';
+import { api } from '../../../../convex/_generated/api';
+import { authedClient, isBackendConfigured, snakeize } from '../lib/convex';
 
 // Consent documents shown to users; bump versions when terms change.
 export const CONSENT_DOCS = {
@@ -36,84 +36,92 @@ export interface UserSettings {
 export const accountService = {
   /** Records user consent for a document/version. Called from the consent screen. */
   async recordConsent(document: 'TERMS' | 'PRIVACY' | 'DATA', version: string): Promise<void> {
-    if (!isSupabaseConfigured()) return; // recorded on first session with backend
-    const { error } = await supabase
-      .from('user_consents')
-      .insert({ document, version });
-    if (error) throw error;
+    if (!isBackendConfigured()) return;
+    await (await authedClient()).mutation(api.account.setConsent, {
+      consentType: document,
+      granted: true,
+      policyVersion: version,
+    } as any);
   },
 
   async listMyConsents(): Promise<{ document: string; version: string; accepted_at: string }[]> {
-    if (!isSupabaseConfigured()) return [];
-    const { data, error } = await supabase
-      .from('user_consents')
-      .select('document, version, accepted_at')
-      .order('accepted_at', { ascending: false });
-    if (error) return [];
-    return data;
+    if (!isBackendConfigured()) return [];
+    try {
+      const data = await (await authedClient()).query(api.account.listMyConsents, {});
+      const rows = snakeize<any[]>(data) ?? [];
+      return rows
+        .filter((r) => r.granted)
+        .map((r) => ({ document: r.consent_type, version: r.policy_version ?? '', accepted_at: r.granted_at }));
+    } catch {
+      return [];
+    }
   },
 
   /** Real refer & earn: code + referral counts from the referrals table. */
   async getReferralSummary(): Promise<ReferralSummary | null> {
-    if (!isSupabaseConfigured()) return null;
-    const { data: code, error: codeError } = await supabase.rpc('get_or_create_referral_code');
-    if (codeError) return null;
-    const { count: successful } = await supabase
-      .from('referrals')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'REWARDED');
-    const { count: pending } = await supabase
-      .from('referrals')
-      .select('*', { count: 'exact', head: true })
-      .neq('status', 'REWARDED');
-    return { code: String(code ?? ''), successful: successful ?? 0, pending: pending ?? 0 };
+    if (!isBackendConfigured()) return null;
+    try {
+      const code = await (await authedClient()).mutation(api.account.getOrCreateReferralCode, {});
+      const referrals = (await (await authedClient()).query(api.account.myReferrals, {})) as any[];
+      const successful = referrals.filter((r) => r.status === 'REWARDED').length;
+      const pending = referrals.filter((r) => r.status !== 'REWARDED').length;
+      return { code: String(code ?? ''), successful, pending };
+    } catch {
+      return null;
+    }
   },
 
   async applyReferral(code: string): Promise<boolean> {
-    if (!isSupabaseConfigured()) return false;
-    const { data, error } = await supabase.rpc('apply_referral', { p_code: code });
-    if (error) throw error;
+    if (!isBackendConfigured()) return false;
+    const data = await (await authedClient()).mutation(api.account.applyReferral, { code } as any);
     return Boolean(data);
   },
 
   async getSettings(): Promise<UserSettings> {
-    if (!isSupabaseConfigured()) return {};
-    const { data } = await supabase
-      .from('user_settings')
-      .select('settings')
-      .single();
-    return (data?.settings as UserSettings) ?? {};
+    if (!isBackendConfigured()) return {};
+    try {
+      return ((await (await authedClient()).query(api.account.getMySettings, {})) as UserSettings) ?? {};
+    } catch {
+      return {};
+    }
   },
 
   async saveSettings(settings: UserSettings): Promise<void> {
-    if (!isSupabaseConfigured()) return;
-    const { error } = await supabase
-      .from('user_settings')
-      .upsert({ settings }, { onConflict: 'user_id' });
-    if (error) throw error;
+    if (!isBackendConfigured()) return;
+    await (await authedClient()).mutation(api.account.updateMySettings, { settings } as any);
   },
 
   /** Soft-deletes: deactivates the account server-side. Confirmation lives in the UI. */
   async deactivateAccount(): Promise<void> {
-    const { error } = await supabase.rpc('request_account_deactivation');
-    if (error) throw error;
+    await (await authedClient()).mutation(api.account.requestAccountDeactivation, {});
   },
 
   /** Activates any pending volunteer invitations matching the signed-in email. */
   async acceptMyInvitations(): Promise<number> {
-    if (!isSupabaseConfigured()) return 0;
-    const { data, error } = await supabase.rpc('accept_my_invitations');
-    if (error) return 0;
-    return Number(data ?? 0);
+    if (!isBackendConfigured()) return 0;
+    try {
+      const data = await (await authedClient()).mutation(api.volunteers.acceptMyInvitations, {});
+      return Number(data ?? 0);
+    } catch {
+      return 0;
+    }
   },
 
   async listMyInvitations(): Promise<VolunteerInvitation[]> {
-    if (!isSupabaseConfigured()) return [];
-    const { data, error } = await supabase
-      .from('volunteer_invitations')
-      .select('*, event:events(name)')
-      .order('created_at', { ascending: false });
-    if (error) return [];
-    return (data ?? []) as VolunteerInvitation[];
+    if (!isBackendConfigured()) return [];
+    try {
+      const me: any = await (await authedClient()).query(api.users.me, {});
+      const email = (me?.user?.email ?? '').toLowerCase();
+      if (!email) return [];
+      // Invitations surface via accepted event memberships once accepted; direct
+      // invitee listing happens through acceptMyInvitations on sign-in.
+      const staffEvents = (await (await authedClient()).query(
+        api.volunteers.listEventInvitations,
+        {} as any,
+      )) as any[];
+      return snakeize<VolunteerInvitation[]>(staffEvents) ?? [];
+    } catch {
+      return [];
+    }
   },
 };

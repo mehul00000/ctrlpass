@@ -7,7 +7,7 @@ import { Bell, Send, CheckCircle2, AlertCircle, Megaphone } from 'lucide-react';
 import { eventService } from '@/services/events';
 import { organizerService } from '@/services/organizer';
 import { Event } from '@ctrlpass/types';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isConvexConfigured } from '@/lib/convex';
 
 export default function NotificationsPage() {
   const [events, setEvents] = useState<Event[]>([]);
@@ -21,7 +21,7 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     async function load() {
-      if (!isSupabaseConfigured) {
+      if (!isConvexConfigured) {
         setLoading(false);
         return;
       }

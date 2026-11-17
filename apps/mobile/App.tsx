@@ -12,7 +12,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 
 /**
  * Clerk owns authentication/identity (publishable key only — the secret key
- * must never exist in the mobile app). Supabase remains the database layer.
+ * must never exist in the mobile app). Convex is the database layer.
  */
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 

@@ -6,7 +6,7 @@ import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ConfigNotice from '@/components/ConfigNotice';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isConvexConfigured } from '@/lib/convex';
 import { eventService } from '@/services/events';
 import { Event } from '@ctrlpass/types';
 import {
@@ -332,7 +332,7 @@ export default function HomePage() {
         </section>
       ) : (
         <>
-          {!isSupabaseConfigured && (
+          {!isConvexConfigured && (
             <section className="mx-auto w-full max-w-[1360px] px-5 pt-16 sm:px-8 lg:px-12">
               <ConfigNotice />
             </section>

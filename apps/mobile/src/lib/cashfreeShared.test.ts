@@ -1,5 +1,5 @@
 /**
- * Unit tests for the shared Cashfree payment logic (supabase/functions/_shared/cashfree.ts)
+ * Unit tests for the shared Cashfree payment logic (convex/lib/cashfree.ts)
  * and the booking-fee mirror (@ctrlpass/types). Node 22 provides the WebCrypto globals these
  * modules use, so the edge-function code is testable without Deno.
  */
@@ -10,7 +10,7 @@ import {
   mapCashfreePaymentStatus,
   toMinor,
   verifyWebhookSignature,
-} from '../../../../supabase/functions/_shared/cashfree';
+} from '../../../../convex/lib/cashfree';
 import { bookingFeeMinor } from '../../../../packages/types/src';
 
 // ─── Booking fee (mirror of the authoritative SQL booking_fee_minor) ───

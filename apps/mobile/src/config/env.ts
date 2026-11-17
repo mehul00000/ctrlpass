@@ -1,14 +1,16 @@
 /**
- * Fill SUPABASE_URL / SUPABASE_ANON_KEY before connecting to a live project.
- * shortcut: local placeholders so the Android binary boots; replace before production.
+ * Mobile environment — Clerk + Convex (Supabase removed).
+ * Values come from EXPO_PUBLIC_* env vars (.env) or hardcoded fallbacks below.
  */
 export const ENV = {
-  SUPABASE_URL: 'https://dkczkbroqoxlvzmztkni.supabase.co' as string,
-  SUPABASE_ANON_KEY: 'sb_publishable_YOMSP-UjKreKZMWRmXooUg_m4XiW4S2' as string,
+  CLERK_PUBLISHABLE_KEY:
+    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ??
+    'pk_test_c3VtbWFyeS1hbnRlYXRlci04NDc4LmNsZXJrLmFjY291bnRzLmRldiQ',
+  CONVEX_URL: process.env.EXPO_PUBLIC_CONVEX_URL ?? 'https://efficient-trout-358.convex.cloud',
   // Set to 'production' for live Cashfree; anything else (incl. empty) uses sandbox.
-  CASHFREE_ENV: '' as string,
+  CASHFREE_ENV: process.env.EXPO_PUBLIC_CASHFREE_ENV ?? '',
 } as const;
 
-export function isSupabaseConfigured(): boolean {
-  return Boolean(ENV.SUPABASE_URL && ENV.SUPABASE_ANON_KEY);
+export function isBackendConfigured(): boolean {
+  return Boolean(ENV.CONVEX_URL);
 }

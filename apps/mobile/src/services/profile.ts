@@ -1,62 +1,68 @@
-import { supabase } from '../lib/supabase';
-import { isSupabaseConfigured } from '../config/env';
+import { api } from '../../../../convex/_generated/api';
+import { authedClient, isBackendConfigured, snakeize } from '../lib/convex';
 import { AppNotification, Profile, UserRole } from '../types';
 
 export const profileService = {
-  async getProfile(userId: string): Promise<Profile | null> {
-    if (!isSupabaseConfigured()) return null;
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (error) return null;
-    return data as Profile;
-  },
-
-  async getAppUser(userId: string) {
-    if (!isSupabaseConfigured()) return null;
-    const { data } = await supabase.from('app_users').select('*').eq('id', userId).single();
-    return data as { status: string; email: string | null } | null;
-  },
-
-  async upsertProfile(userId: string, updates: Partial<Profile>) {
-    if (!isSupabaseConfigured()) {
-      throw new Error('Supabase credentials required to save profile.');
+  async getProfile(_userId: string): Promise<Profile | null> {
+    if (!isBackendConfigured()) return null;
+    try {
+      const me: any = await (await authedClient()).query(api.users.me, {});
+      return (snakeize<Profile>(me?.profile) ?? null) as Profile | null;
+    } catch {
+      return null;
     }
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({ id: userId, user_id: userId, ...updates, updated_at: new Date().toISOString() });
-    return { error };
   },
 
-  async getUserRoles(userId: string): Promise<UserRole[]> {
-    if (!isSupabaseConfigured()) return ['ATTENDEE'];
-    const { data } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('status', 'ACTIVE');
-    return (data ?? []).map((r: { role: UserRole }) => r.role);
+  async getAppUser(_userId: string) {
+    if (!isBackendConfigured()) return null;
+    try {
+      const me: any = await (await authedClient()).query(api.users.me, {});
+      return me?.user ? { status: me.user.status, email: me.user.email ?? null } : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async upsertProfile(_userId: string, updates: Partial<Profile>) {
+    if (!isBackendConfigured()) {
+      throw new Error('Convex URL required to save profile.');
+    }
+    await (await authedClient()).mutation(api.users.updateProfile, {
+      fullName: updates.full_name,
+      phone: updates.phone,
+      city: updates.city,
+      state: updates.state,
+      profileImageUrl: (updates as any).profile_image_url,
+    } as any);
+    return { error: null };
+  },
+
+  async getUserRoles(_userId: string): Promise<UserRole[]> {
+    if (!isBackendConfigured()) return ['ATTENDEE'];
+    try {
+      const me: any = await (await authedClient()).query(api.users.me, {});
+      return (me?.roles ?? []).map((r: any) => r.role as UserRole);
+    } catch {
+      return ['ATTENDEE'];
+    }
   },
 
   async listNotifications(): Promise<AppNotification[]> {
-    if (!isSupabaseConfigured()) return [];
+    if (!isBackendConfigured()) return [];
     try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as AppNotification[];
+      const data = await (await authedClient()).query(api.organizers.listMyNotifications, {});
+      return (snakeize<AppNotification[]>(data) ?? []) as AppNotification[];
     } catch {
       return [];
     }
   },
 
   async markNotificationsRead(ids: string[]): Promise<void> {
-    if (!isSupabaseConfigured() || ids.length === 0) return;
+    if (!isBackendConfigured() || ids.length === 0) return;
     try {
-      await supabase
-        .from('notifications')
-        .update({ read_at: new Date().toISOString() })
-        .in('id', ids);
+      await (await authedClient()).mutation(api.organizers.markNotificationsRead, {
+        notificationIds: ids as any,
+      } as any);
     } catch {
       // Ignore
     }

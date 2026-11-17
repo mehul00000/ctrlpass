@@ -277,7 +277,7 @@ export default function ReferralsScreen() {
 
             {!configured ? (
               <Text style={styles.configurationText}>
-                Backend not configured — set Supabase env
+                Backend not configured — set EXPO_PUBLIC_CONVEX_URL
                 to enable referrals.
               </Text>
             ) : null}

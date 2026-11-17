@@ -11,14 +11,11 @@ CtrlPass/
 ├── apps/
 │   ├── mobile/         # React Native 0.88 app (Attendee discovery/ticketing + Volunteer gate scanner)
 │   └── web/            # Next.js 14 App Router dashboard (Organizer portal + Admin command center)
+├── convex/           # Convex backend: schema, business functions, payments, crons
 ├── packages/
 │   ├── types/          # Shared TypeScript domain models & DTOs
 │   ├── ui/             # Shared styling tokens & UI primitives
 │   └── config/         # Shared configurations & constants
-├── supabase/
-│   ├── migrations/     # PostgreSQL DDL, tables, RLS policies, indexes, and triggers
-│   ├── functions/      # Supabase Edge Functions (Cashfree webhook, check-in, reservations)
-│   └── seed/           # Development database seeds
 ├── docs/               # Architecture, API, and workflow documentation
 └── scripts/            # Build, test, and maintenance scripts
 ```

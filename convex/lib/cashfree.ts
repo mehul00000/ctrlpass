@@ -1,10 +1,12 @@
-// Pure Cashfree helpers shared by edge functions. No Deno-specific imports, so the
-// same module is unit-testable under Node (mobile jest) — keep it that way.
-/// <reference lib="dom" />
-export const CASHFREE_API_VERSION = '2023-08-01';
+// Pure Cashfree helpers — ported from supabase/functions/_shared/cashfree.ts.
+// No runtime-specific imports, so the same module is unit-testable under Node
+// (mobile jest) and runs inside Convex actions.
+export const CASHFREE_API_VERSION = "2023-08-01";
 
 export function cashfreeBaseUrl(env: string | undefined): string {
-  return env === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+  return env === "production"
+    ? "https://api.cashfree.com/pg"
+    : "https://sandbox.cashfree.com/pg";
 }
 
 // Cashfree signs `${timestamp}${rawBody}` with HMAC-SHA256, base64-encoded.
@@ -13,20 +15,20 @@ export async function verifyWebhookSignature(
   raw: string,
   timestamp: string,
   signature: string,
-  secret: string
+  secret: string,
 ): Promise<boolean> {
   if (!secret || !signature || !timestamp) return false;
   try {
     const enc = new TextEncoder();
     const key = await crypto.subtle.importKey(
-      'raw',
+      "raw",
       enc.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
+      { name: "HMAC", hash: "SHA-256" },
       false,
-      ['verify']
+      ["verify"],
     );
     const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
-    return await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(timestamp + raw));
+    return await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(timestamp + raw));
   } catch {
     return false;
   }
@@ -41,24 +43,31 @@ export function isStaleTimestamp(timestamp: string, maxSkewSec = 300): boolean {
 
 // Cashfree order_amount is rupees (decimal); internal money is paise (integer).
 export function toMinor(rupees: number | undefined | null): number | null {
-  if (typeof rupees !== 'number' || !Number.isFinite(rupees) || rupees < 0) return null;
+  if (typeof rupees !== "number" || !Number.isFinite(rupees) || rupees < 0) return null;
   return Math.round(rupees * 100);
 }
 
-export type InternalPaymentStatus = 'INITIATED' | 'PENDING' | 'AUTHORIZED' | 'CAPTURED' | 'FAILED';
+export type InternalPaymentStatus =
+  | "INITIATED"
+  | "PENDING"
+  | "AUTHORIZED"
+  | "CAPTURED"
+  | "FAILED";
 
 // Cashfree payment_status → existing payment_attempts.status. Unknown/other statuses
 // (e.g. provider-specific terminal variants) return null and are only logged.
-export function mapCashfreePaymentStatus(status: string | undefined | null): InternalPaymentStatus | null {
+export function mapCashfreePaymentStatus(
+  status: string | undefined | null,
+): InternalPaymentStatus | null {
   switch (status) {
-    case 'SUCCESS':
-      return 'CAPTURED';
-    case 'AUTHORIZED':
-      return 'AUTHORIZED';
-    case 'PENDING':
-      return 'PENDING';
-    case 'FAILED':
-      return 'FAILED';
+    case "SUCCESS":
+      return "CAPTURED";
+    case "AUTHORIZED":
+      return "AUTHORIZED";
+    case "PENDING":
+      return "PENDING";
+    case "FAILED":
+      return "FAILED";
     default:
       return null;
   }
@@ -87,6 +96,8 @@ export function extractPaymentEvent(payload: any): CashfreePaymentEvent {
     paymentCurrency: payment.payment_currency,
     amountMinor,
     failureReason: payment.payment_message,
-    dedupeKey: String(payment.cf_payment_id ?? payload?.event_time ?? crypto.randomUUID()),
+    dedupeKey: String(
+      payment.cf_payment_id ?? payload?.event_time ?? `evt-${Date.now()}`,
+    ),
   };
 }

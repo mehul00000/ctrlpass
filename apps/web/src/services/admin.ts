@@ -1,8 +1,9 @@
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { api } from "../../../../convex/_generated/api";
+import { authedClient, isConvexConfigured } from "@/lib/convex";
 
 export const adminService = {
   async getDashboardStats() {
-    if (!isSupabaseConfigured) {
+    if (!isConvexConfigured) {
       return {
         totalRevenuePaise: 0,
         totalBookings: 0,
@@ -11,31 +12,25 @@ export const adminService = {
         pendingReviews: 0,
       };
     }
-
-    const [eventsRes, bookingsRes, checkinsRes, reviewRes] = await Promise.all([
-      supabase.from('events').select('id', { count: 'exact', head: true }),
-      supabase.from('bookings').select('id, total_amount_minor', { count: 'exact' }).eq('status', 'CONFIRMED'),
-      supabase.from('check_ins').select('id', { count: 'exact', head: true }),
-      supabase.from('events').select('id', { count: 'exact', head: true }).eq('status', 'SUBMITTED_FOR_REVIEW'),
-    ]);
-
-    const totalRevenuePaise = (bookingsRes.data || []).reduce(
-      (sum, b) => sum + (Number(b.total_amount_minor) || 0),
-      0
-    );
+    const counts = await (await authedClient()).query(api.events.adminDashboardCounts, {}) as any;
+    const events = await (await authedClient()).query(api.events.adminListEvents, {}) as unknown as any[];
+    const pendingReviews = events.filter((e) => e.status === "SUBMITTED_FOR_REVIEW").length;
+    const confirmedBookings = (
+      await (await authedClient()).query(api.staff.listOrganizerBookings, {})
+    ).filter((b: any) => b.status === "CONFIRMED");
 
     return {
-      totalRevenuePaise,
-      totalBookings: bookingsRes.count || 0,
-      totalEvents: eventsRes.count || 0,
-      totalCheckins: checkinsRes.count || 0,
-      pendingReviews: reviewRes.count || 0,
+      totalRevenuePaise: confirmedBookings.reduce((s, b) => s + (Number(b.totalAmountMinor) || 0), 0),
+      totalBookings: counts.confirmedBookings + counts.bookings - confirmedBookings.length, // all bookings
+      totalEvents: counts.events,
+      totalCheckins: counts.checkIns,
+      pendingReviews,
     };
   },
 
   async getReportMetrics() {
     const stats = await this.getDashboardStats();
-    if (!isSupabaseConfigured) {
+    if (!isConvexConfigured) {
       return {
         ...stats,
         conversionRate: null as number | null,
@@ -45,16 +40,10 @@ export const adminService = {
         successfulCheckins: 0,
       };
     }
-
-    const [confirmedRes, ticketsRes, successCheckins] = await Promise.all([
-      supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('status', 'CONFIRMED'),
-      supabase.from('tickets').select('id', { count: 'exact', head: true }),
-      supabase.from('check_ins').select('id', { count: 'exact', head: true }).eq('result', 'SUCCESS'),
-    ]);
-
-    const confirmedBookings = confirmedRes.count || 0;
-    const issuedTickets = ticketsRes.count || 0;
-    const successfulCheckins = successCheckins.count || 0;
+    const counts = await (await authedClient()).query(api.events.adminDashboardCounts, {}) as any;
+    const confirmedBookings = counts.confirmedBookings;
+    const issuedTickets = counts.tickets;
+    const successfulCheckins = counts.checkIns;
     const conversionRate =
       stats.totalBookings > 0 ? (confirmedBookings / stats.totalBookings) * 100 : null;
     const attendanceRate =
@@ -71,36 +60,20 @@ export const adminService = {
   },
 
   async listOrganizers() {
-    if (!isSupabaseConfigured) return [];
-    const { data, error } = await supabase
-      .from('organizers')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
+    if (!isConvexConfigured) return [];
+    const data = await (await authedClient()).query(api.staff.adminListOrganizers, {});
+    return (data as any[]) || [];
   },
 
   async listUsers() {
-    if (!isSupabaseConfigured) return [];
-    const { data, error } = await supabase
-      .from('app_users')
-      .select('*, profile:profiles(*)')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
+    if (!isConvexConfigured) return [];
+    const data = await (await authedClient()).query(api.staff.adminListUsers, {});
+    return (data as any[]) || [];
   },
 
   async listAuditLogs() {
-    if (!isSupabaseConfigured) return [];
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-    return data || [];
+    if (!isConvexConfigured) return [];
+    const data = await (await authedClient()).query(api.staff.adminListAuditLogs, {});
+    return (data as any[]) || [];
   },
 };

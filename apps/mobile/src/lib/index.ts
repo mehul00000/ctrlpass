@@ -1,2 +1,2 @@
-export * from './supabase';
+export * from './convex';
 export * from './utils';

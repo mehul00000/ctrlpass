@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { isSupabaseConfigured } from '../config/env';
+import { api } from '../../../../convex/_generated/api';
+import { authedClient, isBackendConfigured, snakeize } from '../lib/convex';
 import { Booking, CheckInResult, ReservationResponse, Ticket } from '../types';
 
 export interface ReservePayload {
@@ -14,48 +14,45 @@ export interface ReservePayload {
 }
 
 function checkConfigured() {
-  if (!isSupabaseConfigured()) {
-    throw new Error(
-      'Supabase credentials required. Please configure SUPABASE_URL and SUPABASE_ANON_KEY.'
-    );
+  if (!isBackendConfigured()) {
+    throw new Error('Convex URL required. Please configure EXPO_PUBLIC_CONVEX_URL.');
   }
 }
 
 export const bookingService = {
   async createReservation(payload: ReservePayload): Promise<ReservationResponse> {
     checkConfigured();
-
-    const { data, error } = await supabase.rpc('reserve_booking', {
-      p_event_id: payload.event_id,
-      p_items: payload.items,
-      p_attendee: payload.attendee,
-    });
-
-    if (error) throw new Error(error.message);
-    return data as ReservationResponse;
+    const result = await (await authedClient()).mutation(api.bookings.reserveBooking, {
+      eventId: payload.event_id,
+      items: payload.items.map((i) => ({
+        ticketTypeId: i.ticket_type_id,
+        quantity: i.quantity,
+      })),
+      attendee: {
+        name: payload.attendee.name,
+        email: payload.attendee.email,
+        phone: payload.attendee.phone,
+        extraFields: payload.attendee.extra_fields,
+      },
+    } as any);
+    const shaped = snakeize<any>(result);
+    return shaped as ReservationResponse;
   },
 
   async confirmFree(bookingId: string) {
     checkConfigured();
-
-    const { data, error } = await supabase.rpc('confirm_free_booking', {
-      p_booking_id: bookingId,
-    });
-
-    if (error) throw new Error(error.message);
-    return data as { booking_id: string; status: string };
+    const result = await (await authedClient()).mutation(api.bookings.confirmFreeBooking, {
+      bookingId,
+    } as any);
+    return { booking_id: (result as any).bookingId, status: (result as any).status };
   },
 
   async initiatePayment(bookingId: string) {
     checkConfigured();
-
-    const { data, error } = await supabase.functions.invoke('initiate-payment', {
-      body: { booking_id: bookingId },
-    });
-
-    if (error) throw new Error(error.message);
-    if (data?.error) throw new Error(data.error.message);
-    return data.data as {
+    const data = await (await authedClient()).action(api.payments.initiatePayment, {
+      bookingId,
+    } as any);
+    return data as {
       payment_attempt_id: string;
       order_id: string;
       amount_minor: number;
@@ -66,17 +63,24 @@ export const bookingService = {
 
   async getBooking(bookingId: string): Promise<Booking> {
     checkConfigured();
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(
-        '*, event:events(id, name, start_at, cover_image_url, venue:venues(name, city)), booking_items(*, ticket_type:ticket_types(name, price_minor))'
-      )
-      .eq('id', bookingId)
-      .single();
-
-    if (error) throw new Error(error.message);
-    return data as Booking;
+    const data = await (await authedClient()).query(api.bookings.getBooking, {
+      bookingId,
+    } as any);
+    if (!data) throw new Error('Booking not found');
+    const shaped = snakeize<any>(data);
+    return {
+      ...shaped.booking,
+      event: shaped.event_name
+        ? {
+            id: shaped.booking.event_id,
+            name: shaped.event_name,
+            start_at: shaped.event_start_at,
+            end_at: shaped.event_end_at,
+          }
+        : undefined,
+      booking_items: shaped.items,
+      tickets: shaped.tickets,
+    } as unknown as Booking;
   },
 
   async waitForConfirmation(bookingId: string, timeoutMs = 120_000): Promise<Booking> {
@@ -86,80 +90,64 @@ export const bookingService = {
     while (Date.now() < deadline) {
       last = await this.getBooking(bookingId);
       if (terminal.has(last.status)) return last;
-      await new Promise<void>(resolve => setTimeout(() => resolve(), 2000));
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 2000));
     }
     if (!last) throw new Error('Could not verify booking status.');
     return last;
   },
 
   async listMyBookings(): Promise<Booking[]> {
-    if (!isSupabaseConfigured()) return [];
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*, event:events(id, name, cover_image_url, start_at)')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data ?? []) as Booking[];
+    if (!isBackendConfigured()) return [];
+    const data = await (await authedClient()).query(api.bookings.listMyBookings, {});
+    return (snakeize<Booking[]>(data) ?? []) as Booking[];
   },
 
   async listMyTickets(): Promise<Ticket[]> {
-    if (!isSupabaseConfigured()) return [];
-
-    const { data, error } = await supabase
-      .from('tickets')
-      .select(
-        '*, event:events(id, name, cover_image_url, start_at, end_at, venue:venues(name, city)), ticket_type:ticket_types(name), ticket_credentials(qr_token)'
-      )
-      .order('issued_at', { ascending: false });
-
-    if (error) throw error;
-    return (data ?? []) as Ticket[];
+    if (!isBackendConfigured()) return [];
+    const data = await (await authedClient()).query(api.checkins.listMyTickets, {});
+    const shaped = snakeize<any[]>(data) ?? [];
+    // Preserve the old embedded ticket_credentials shape for screens.
+    return shaped.map((t: any) => ({
+      ...t,
+      ticket_credentials: { qr_token: t.qr_token ?? t.qrToken ?? null },
+    })) as unknown as Ticket[];
   },
 
   async getTicket(ticketId: string): Promise<Ticket | null> {
-    if (!isSupabaseConfigured()) return null;
-
-    const { data, error } = await supabase
-      .from('tickets')
-      .select('*, event:events(*), ticket_type:ticket_types(*), ticket_credentials(qr_token)')
-      .eq('id', ticketId)
-      .maybeSingle();
-
-    if (error) return null;
-    return data as Ticket | null;
+    if (!isBackendConfigured()) return null;
+    const tickets = (await (await authedClient()).query(api.checkins.listMyTickets, {})) as any[];
+    const found = tickets.find((t) => t._id === ticketId);
+    if (!found) return null;
+    const shaped = snakeize<any>(found);
+    return {
+      ...shaped,
+      ticket_credentials: { qr_token: shaped.qr_token ?? null },
+    } as unknown as Ticket;
   },
 
   async checkIn(qrToken: string, eventId: string): Promise<CheckInResult> {
     checkConfigured();
-
-    const { data, error } = await supabase.rpc('checkin_scan', {
-      p_event_id: eventId,
-      p_qr_token: qrToken,
-      p_device: null,
-    });
-
-    if (error) throw new Error(error.message);
+    const data = await (await authedClient()).mutation(api.checkins.checkinScan, {
+      eventId,
+      qrToken,
+      device: undefined,
+    } as any);
     return data as CheckInResult;
   },
 
   async requestCancellation(bookingId: string, reason?: string) {
     checkConfigured();
-
-    const { data, error } = await supabase.rpc('request_cancellation', {
-      p_booking_id: bookingId,
-      p_reason: reason ?? null,
-    });
-
-    if (error) throw new Error(error.message);
+    const data = await (await authedClient()).mutation(api.bookings.requestCancellation, {
+      bookingId,
+      reason,
+    } as any);
     return data as { success: boolean; message: string };
   },
 };
 
 export function ticketQrToken(ticket: Ticket): string | null {
-  const cred = ticket.ticket_credentials;
-  if (!cred) return null;
+  const cred = (ticket as any).ticket_credentials;
+  if (!cred) return (ticket as any).qr_token ?? null;
   if (Array.isArray(cred)) return cred[0]?.qr_token ?? null;
   return cred.qr_token ?? null;
 }

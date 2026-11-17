@@ -1,11 +1,11 @@
-import { supabase } from '../lib/supabase';
-import { isSupabaseConfigured } from '../config/env';
+import { api } from '../../../../convex/_generated/api';
+import { authedClient, isBackendConfigured, snakeize } from '../lib/convex';
 import type { Event, TicketType, RegistrationField } from '../types';
 
 function checkConfigured() {
-  if (!isSupabaseConfigured()) {
+  if (!isBackendConfigured()) {
     throw new Error(
-      'Supabase credentials required. Please configure SUPABASE_URL and SUPABASE_ANON_KEY in src/config/env.ts.'
+      'Convex URL required. Please configure EXPO_PUBLIC_CONVEX_URL in apps/mobile/.env.'
     );
   }
 }
@@ -19,87 +19,52 @@ export const eventService = {
     offset?: number;
   }): Promise<Event[]> {
     checkConfigured();
-    let query = supabase
-      .from('events')
-      .select(`
-        *,
-        organizer:organizers(id, name, type, verification_status, status),
-        venue:venues(*),
-        ticket_types(*)
-      `)
-      .in('status', ['PUBLISHED', 'SALES_OPEN'])
-      .eq('visibility', 'PUBLIC')
-      .order('start_at', { ascending: true });
-
-    if (options?.category) {
-      query = query.eq('category', options.category);
-    }
+    let data = (await (await authedClient()).query(api.events.listPublicEvents, {})) as any[];
+    data = data.filter(
+      (e) => e.status === 'PUBLISHED' || e.status === 'SALES_OPEN',
+    );
+    if (options?.category) data = data.filter((e) => e.category === options.category);
     if (options?.search) {
-      query = query.ilike('name', `%${options.search}%`);
+      const q = options.search.toLowerCase();
+      data = data.filter((e) => e.name?.toLowerCase().includes(q));
     }
-    if (options?.limit) {
-      query = query.limit(options.limit);
-    }
-    if (options?.offset) {
-      query = query.range(options.offset, options.offset + (options.limit ?? 20) - 1);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data ?? []) as unknown as Event[];
+    data = data.slice(options?.offset ?? 0, (options?.offset ?? 0) + (options?.limit ?? 20));
+    return snakeize<Event[]>(data) as unknown as Event[];
   },
 
   /** Fetch featured/trending events for home screen */
   async listFeatured(): Promise<Event[]> {
     checkConfigured();
-    const { data, error } = await supabase
-      .from('events')
-      .select(`
-        *,
-        organizer:organizers(id, name, type, verification_status, status),
-        venue:venues(*),
-        ticket_types(*)
-      `)
-      .in('status', ['PUBLISHED', 'SALES_OPEN'])
-      .eq('visibility', 'PUBLIC')
-      .order('start_at', { ascending: true })
-      .limit(10);
-
-    if (error) throw error;
-    return (data ?? []) as unknown as Event[];
+    const data = (await (await authedClient()).query(api.events.listPublicEvents, {})) as any[];
+    const filtered = data
+      .filter((e) => e.status === 'PUBLISHED' || e.status === 'SALES_OPEN')
+      .slice(0, 10);
+    return snakeize<Event[]>(filtered) as unknown as Event[];
   },
 
   /** Fetch single event with all relations */
   async getById(eventId: string): Promise<Event> {
     checkConfigured();
-    const { data, error } = await supabase
-      .from('events')
-      .select(`
-        *,
-        organizer:organizers(id, name, type, verification_status, status),
-        venue:venues(*),
-        ticket_types(*)
-      `)
-      .eq('id', eventId)
-      .single();
-
-    if (error) throw error;
-    return data as unknown as Event;
+    const data = await (await authedClient()).query(api.events.getPublicEvent, {
+      eventId,
+    } as any);
+    if (!data) throw new Error('Event not found');
+    const shaped = snakeize<any>(data);
+    return {
+      ...shaped.event,
+      organizer: shaped.organizer,
+      venue: shaped.venue,
+      ticket_types: shaped.ticket_types,
+    } as unknown as Event;
   },
 
   /** Fetch ticket types for an event */
   async getTicketTypes(eventId: string): Promise<TicketType[]> {
     checkConfigured();
-    const { data, error } = await supabase
-      .from('ticket_types')
-      .select('*')
-      .eq('event_id', eventId)
-      .eq('status', 'ACTIVE')
-      .eq('visibility', 'VISIBLE')
-      .order('price_minor', { ascending: true });
-
-    if (error) throw error;
-    return (data ?? []) as TicketType[];
+    const data = await (await authedClient()).query(api.ticketTypes.listForEvent, {
+      eventId,
+    } as any);
+    return (snakeize<TicketType[]>(data) ?? []) as TicketType[];
   },
 
   /** Alias for getById — used by attendee screens */
@@ -110,13 +75,9 @@ export const eventService = {
   /** Fetch registration fields for an event */
   async getRegistrationFields(eventId: string): Promise<RegistrationField[]> {
     checkConfigured();
-    const { data, error } = await supabase
-      .from('registration_fields')
-      .select('*')
-      .eq('event_id', eventId)
-      .order('display_order', { ascending: true });
-
-    if (error) throw error;
-    return (data ?? []) as RegistrationField[];
+    const data = await (await authedClient()).query(api.events.listRegistrationFields, {
+      eventId,
+    } as any);
+    return (snakeize<RegistrationField[]>(data) ?? []) as RegistrationField[];
   },
 };

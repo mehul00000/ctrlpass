@@ -1,5 +1,6 @@
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import type { TicketType } from '@ctrlpass/types';
+import { api } from "../../../../convex/_generated/api";
+import { authedClient, isConvexConfigured, snakeize } from "@/lib/convex";
+import type { TicketType } from "@ctrlpass/types";
 
 export type OrganizerRecord = {
   id: string;
@@ -11,243 +12,193 @@ export type OrganizerRecord = {
 };
 
 function requireConfigured() {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase is not configured. Connect database credentials to continue.');
+  if (!isConvexConfigured) {
+    throw new Error("Convex is not configured. Set NEXT_PUBLIC_CONVEX_URL to continue.");
   }
+}
+
+function toOrganizerRecord(org: any): OrganizerRecord {
+  const s = snakeize<any>(org);
+  return {
+    id: s.id,
+    name: s.name,
+    email: s.email ?? null,
+    city: s.city ?? null,
+    verification_status: s.verification_status,
+    status: s.status,
+  };
 }
 
 export const organizerService = {
   async bootstrapMyOrganizer(name: string): Promise<OrganizerRecord> {
     requireConfigured();
-    const { data: orgId, error } = await supabase.rpc('bootstrap_my_organizer', {
-      p_name: name,
-    });
-    if (error) throw error;
-    const { data, error: fetchError } = await supabase
-      .from('organizers')
-      .select('id, name, email, city, verification_status, status')
-      .eq('id', orgId as string)
-      .single();
-    if (fetchError) throw fetchError;
-    return data as OrganizerRecord;
+    const client = await authedClient();
+    const orgId = (await client.mutation(api.organizers.bootstrapMyOrganizer, {
+      name,
+    } as any)) as unknown as string;
+    const mine = await client.query(api.organizers.listMyOrganizers, {});
+    const found = (mine as any[]).find((m) => m.organizer.id === orgId);
+    if (!found) throw new Error("Organizer bootstrap failed.");
+    return toOrganizerRecord(found.organizer);
   },
 
   async getMyOrganizer(): Promise<OrganizerRecord | null> {
     requireConfigured();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    if (!user) throw new Error('Not signed in.');
-
-    const { data: membership, error: memberError } = await supabase
-      .from('organizer_members')
-      .select('organizer_id')
-      .eq('user_id', user.id)
-      .eq('status', 'ACTIVE')
-      .limit(1)
-      .maybeSingle();
-    if (memberError) throw memberError;
-    if (!membership) return null;
-
-    const { data, error } = await supabase
-      .from('organizers')
-      .select('id, name, email, city, verification_status, status')
-      .eq('id', membership.organizer_id)
-      .single();
-    if (error) throw error;
-    return data as OrganizerRecord;
+    const mine = await (await authedClient()).query(api.organizers.listMyOrganizers, {});
+    const active = (mine as any[])[0];
+    if (!active) return null;
+    return toOrganizerRecord(active.organizer);
   },
 
   async updateMyOrganizer(
     id: string,
-    updates: { name: string; email: string; city: string }
+    updates: { name: string; email: string; city: string },
   ): Promise<OrganizerRecord> {
     requireConfigured();
-    const { data, error } = await supabase
-      .from('organizers')
-      .update({ name: updates.name, email: updates.email, city: updates.city, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('id, name, email, city, verification_status, status')
-      .single();
-    if (error) throw error;
-    return data as OrganizerRecord;
+    (await authedClient()).mutation(api.organizers.updateOrganizer, {
+      organizerId: id,
+      name: updates.name,
+      email: updates.email,
+      city: updates.city,
+    } as any);
+    const mine = await (await authedClient()).query(api.organizers.listMyOrganizers, {});
+    const found = (mine as any[]).find((m) => m.organizer.id === id);
+    if (!found) throw new Error("Organizer not found after update.");
+    return toOrganizerRecord(found.organizer);
   },
 
   async listVolunteers(eventId?: string) {
     requireConfigured();
-    let query = supabase
-      .from('event_members')
-      .select('*, event:events(name)')
-      .in('role', ['VOLUNTEER', 'SCANNER'])
-      .eq('status', 'ACTIVE')
-      .order('created_at', { ascending: false });
-
-    if (eventId) query = query.eq('event_id', eventId);
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data ?? [];
+    const data = await (await authedClient()).query(api.staff.listVolunteers, {
+      eventId,
+    } as any);
+    return snakeize<any[]>(data) ?? [];
   },
 
   // ── Volunteer invitations ────────────────────────────────────────────
-  // State lives in the volunteer_invitations table (migration 0005).
-  // Note: no email provider is wired yet — invitations are recorded and the
-  // volunteer activates them by signing in with the invited email.
+  // No email provider is wired — invitations are recorded and the volunteer
+  // activates them by signing in with the invited email (accept_my_invitations).
 
   async listInvitations(eventId?: string) {
     requireConfigured();
-    let query = supabase
-      .from('volunteer_invitations')
-      .select('*, event:events(name)')
-      .order('created_at', { ascending: false });
-
-    if (eventId) query = query.eq('event_id', eventId);
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data ?? [];
+    const data = await (await authedClient()).query(api.staff.listAllInvitations, {
+      eventId,
+    } as any);
+    return snakeize<any[]>(data) ?? [];
   },
 
-  async inviteVolunteer(eventId: string, email: string, role: 'VOLUNTEER' | 'SCANNER' | 'EVENT_MANAGER') {
+  async inviteVolunteer(
+    eventId: string,
+    email: string,
+    role: "VOLUNTEER" | "SCANNER" | "EVENT_MANAGER",
+  ) {
     requireConfigured();
-    const { data, error } = await supabase.rpc('invite_volunteer', {
-      p_event_id: eventId,
-      p_email: email.trim().toLowerCase(),
-      p_role: role,
-    });
-    if (error) throw error;
-    return data;
+    const data = await (await authedClient()).mutation(api.volunteers.inviteVolunteer, {
+      eventId,
+      email: email.trim().toLowerCase(),
+      role,
+    } as any);
+    return snakeize(data);
   },
 
   async resendInvitation(invitationId: string) {
     requireConfigured();
-    const { error } = await supabase.rpc('resend_volunteer_invitation', {
-      p_invitation_id: invitationId,
-    });
-    if (error) throw error;
+    (await authedClient()).mutation(api.volunteers.resendVolunteerInvitation, {
+      invitationId,
+    } as any);
   },
 
   async revokeInvitation(invitationId: string) {
     requireConfigured();
-    const { error } = await supabase.rpc('revoke_volunteer_invitation', {
-      p_invitation_id: invitationId,
-    });
-    if (error) throw error;
+    (await authedClient()).mutation(api.volunteers.revokeVolunteerInvitation, {
+      invitationId,
+    } as any);
   },
 
-  async upsertVolunteer(
-    eventId: string,
-    userId: string,
-    role: 'VOLUNTEER' | 'SCANNER' = 'SCANNER'
-  ) {
+  async upsertVolunteer(eventId: string, userId: string, role: "VOLUNTEER" | "SCANNER" = "SCANNER") {
     requireConfigured();
-    const { data, error } = await supabase
-      .from('event_members')
-      .upsert(
-        { event_id: eventId, user_id: userId, role, status: 'ACTIVE' },
-        { onConflict: 'event_id,user_id,role' }
-      )
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    // Direct upsert is admin-only; invitations are the normal path.
+    const me = await (await authedClient()).query(api.users.me, {});
+    if (!(me as any).roles?.some((r: any) => r.role === "ADMIN")) {
+      throw new Error(
+        "Only admins can add volunteers directly. Use the invitation flow instead.",
+      );
+    }
+    throw new Error("Direct member upsert moved to admin role management.");
   },
 
   async listTicketTypes(eventId: string): Promise<TicketType[]> {
     requireConfigured();
-    const { data, error } = await supabase
-      .from('ticket_types')
-      .select('*')
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    return (data as TicketType[]) ?? [];
+    const data = await (await authedClient()).query(api.ticketTypes.listForEventStaff, {
+      eventId,
+    } as any);
+    return (snakeize<TicketType[]>(data) ?? []) as unknown as TicketType[];
   },
 
   async createTicketType(eventId: string, payload: Partial<TicketType>) {
     requireConfigured();
-    const { data, error } = await supabase
-      .from('ticket_types')
-      .insert([{ ...payload, event_id: eventId }])
-      .select()
-      .single();
-    if (error) throw error;
-    return data as TicketType;
+    const data = await (await authedClient()).mutation(api.ticketTypes.create, {
+      eventId,
+      name: (payload as any).name || "General",
+      priceMinor: (payload as any).price_minor ?? 0,
+      quantity: (payload as any).quantity ?? 0,
+      minPerBooking: (payload as any).min_per_booking,
+      maxPerBooking: (payload as any).max_per_booking,
+      salesStartAt: (payload as any).sales_start_at
+        ? new Date((payload as any).sales_start_at).getTime()
+        : undefined,
+      salesEndAt: (payload as any).sales_end_at
+        ? new Date((payload as any).sales_end_at).getTime()
+        : undefined,
+      visibility: (payload as any).visibility === "HIDDEN" ? "HIDDEN" : "VISIBLE",
+    } as any);
+    return snakeize(data) as unknown as TicketType;
   },
 
   async updateTicketType(id: string, updates: Partial<TicketType>) {
     requireConfigured();
-    const { data, error } = await supabase
-      .from('ticket_types')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data as TicketType;
+    const data = await (await authedClient()).mutation(api.ticketTypes.update, {
+      ticketTypeId: id,
+      name: updates.name,
+      description: (updates as any).description,
+      priceMinor: (updates as any).price_minor,
+      quantity: (updates as any).quantity,
+      minPerBooking: (updates as any).min_per_booking,
+      maxPerBooking: (updates as any).max_per_booking,
+      salesStartAt: (updates as any).sales_start_at
+        ? new Date((updates as any).sales_start_at).getTime()
+        : undefined,
+      salesEndAt: (updates as any).sales_end_at
+        ? new Date((updates as any).sales_end_at).getTime()
+        : undefined,
+      visibility: (updates as any).visibility as any,
+      status: (updates as any).status as any,
+    } as any);
+    return snakeize(data) as unknown as TicketType;
   },
 
   async disableTicketType(id: string) {
-    return this.updateTicketType(id, { status: 'DISABLED' } as Partial<TicketType>);
+    return this.updateTicketType(id, { status: "DISABLED" } as Partial<TicketType>);
   },
 
   async getFinanceAggregates() {
     requireConfigured();
-    const [bookingsRes, paymentsRes] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('total_amount_minor, booking_fee_minor, status')
-        .eq('status', 'CONFIRMED'),
-      supabase.from('payments').select('amount_minor, status').eq('status', 'SUCCESS'),
-    ]);
-
-    if (bookingsRes.error) throw bookingsRes.error;
-    if (paymentsRes.error) throw paymentsRes.error;
-
-    const bookings = bookingsRes.data ?? [];
-    const payments = paymentsRes.data ?? [];
-
-    const grossMinor = bookings.reduce((sum, b) => sum + (Number(b.total_amount_minor) || 0), 0);
-    const feesMinor = bookings.reduce((sum, b) => sum + (Number(b.booking_fee_minor) || 0), 0);
-    const paymentsMinor = payments.reduce((sum, p) => sum + (Number(p.amount_minor) || 0), 0);
-
-    return {
-      grossMinor,
-      feesMinor,
-      netMinor: Math.max(0, grossMinor - feesMinor),
-      confirmedBookings: bookings.length,
-      successfulPayments: payments.length,
-      paymentsMinor,
+    return (await (await authedClient()).query(api.staff.getFinanceAggregates, {})) as {
+      grossMinor: number;
+      feesMinor: number;
+      netMinor: number;
+      confirmedBookings: number;
+      successfulPayments: number;
+      paymentsMinor: number;
     };
   },
 
   async dispatchAnnouncement(eventId: string, title: string, body: string) {
     requireConfigured();
-    const { data: bookings, error: bookingsError } = await supabase
-      .from('bookings')
-      .select('user_id')
-      .eq('event_id', eventId)
-      .eq('status', 'CONFIRMED');
-
-    if (bookingsError) throw bookingsError;
-
-    const userIds = Array.from(new Set<string>((bookings ?? []).map((b) => b.user_id)));
-    if (userIds.length === 0) {
-      throw new Error('No confirmed attendees to notify for this event.');
-    }
-
-    const rows = userIds.map((user_id) => ({
-      user_id,
-      type: 'EVENT_ANNOUNCEMENT',
+    return await (await authedClient()).mutation(api.staff.announceToEventAttendees, {
+      eventId,
       title,
       body,
-      data: { event_id: eventId },
-    }));
-
-    const { error } = await supabase.from('notifications').insert(rows);
-    if (error) throw error;
-    return { recipientCount: userIds.length };
+    } as any) as { recipientCount: number };
   },
 };

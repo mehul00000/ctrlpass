@@ -33,7 +33,8 @@ import {
 
 import ConfigNotice from './ConfigNotice';
 import BrandMark from './BrandMark';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { useUser, useClerk } from '@clerk/nextjs';
+import { isConvexConfigured } from '@/lib/convex';
 
 interface NavItem {
   name: string;
@@ -185,34 +186,24 @@ export default function DashboardLayout({
   );
   const [accountEmail, setAccountEmail] = useState('');
 
+  const { user: clerkUser } = useUser();
+  const clerk = useClerk();
+
   const navItems = role === 'admin' ? adminNav : organizerNav;
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!clerkUser) return;
 
-    supabase.auth.getUser().then(({ data }) => {
-      const user = data.user;
+    setAccountEmail(clerkUser.primaryEmailAddress?.emailAddress ?? '');
 
-      if (!user) return;
-
-      setAccountEmail(user.email ?? '');
-
-      const name =
-        typeof user.user_metadata?.full_name === 'string'
-          ? user.user_metadata.full_name
-          : '';
-
-      if (name) {
-        setAccountLabel(name);
-      }
-    });
-  }, []);
+    const name = clerkUser.fullName ?? '';
+    if (name) {
+      setAccountLabel(name);
+    }
+  }, [clerkUser]);
 
   async function handleSignOut() {
-    if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
-    }
-
+    await clerk.signOut();
     router.push('/login');
   }
 
@@ -595,7 +586,7 @@ export default function DashboardLayout({
 
         {/* Page */}
         <main className="mx-auto w-full max-w-[1440px] px-5 py-7 sm:px-7 sm:py-8 xl:px-9 xl:py-9">
-          {!isSupabaseConfigured && <ConfigNotice />}
+          {!isConvexConfigured && <ConfigNotice />}
 
           {/* Desktop page heading */}
           <div className="mb-7 hidden items-end justify-between gap-6 md:flex">

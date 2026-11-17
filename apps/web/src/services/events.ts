@@ -1,179 +1,179 @@
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { Event, TicketType } from '@ctrlpass/types';
+import { api } from "../../../../convex/_generated/api";
+import { authedClient, convexErrorMessage, isConvexConfigured, snakeize } from "@/lib/convex";
+import { Event } from "@ctrlpass/types";
 
 export const eventService = {
   async listPublished(): Promise<Event[]> {
-    if (!isSupabaseConfigured) return [];
-    const { data, error } = await supabase
-      .from('events')
-      .select('*, venue:venues(*), organizer:organizers(*), ticket_types(*)')
-      .eq('status', 'PUBLISHED')
-      .order('start_at', { ascending: true });
-
-    if (error) throw error;
-    return (data as unknown as Event[]) || [];
+    if (!isConvexConfigured) return [];
+    const data = await (await authedClient()).query(api.events.listPublicEvents, {});
+    return (snakeize<Event[]>(data) || []) as unknown as Event[];
   },
 
   async listOrganizerEvents(organizerId?: string): Promise<Event[]> {
-    if (!isSupabaseConfigured) return [];
-    let query = supabase
-      .from('events')
-      .select('*, venue:venues(*), ticket_types(*)')
-      .order('created_at', { ascending: false });
-
+    if (!isConvexConfigured) return [];
+    const client = await authedClient();
     if (organizerId) {
-      query = query.eq('organizer_id', organizerId);
+      const data = await client.query(api.events.listMyOrganizerEvents, { organizerId } as any);
+      return (snakeize<Event[]>(data) || []) as unknown as Event[];
     }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data as unknown as Event[]) || [];
+    // All events the signed-in user is allowed to manage.
+    const data = await client.query(api.events.listManagedEvents, {});
+    return (snakeize<Event[]>(data) || []) as unknown as Event[];
   },
 
   async listAllEventsForAdmin(): Promise<Event[]> {
-    if (!isSupabaseConfigured) return [];
-    const { data, error } = await supabase
-      .from('events')
-      .select('*, venue:venues(*), organizer:organizers(*), ticket_types(*)')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return (data as unknown as Event[]) || [];
+    if (!isConvexConfigured) return [];
+    try {
+      const data = await (await authedClient()).query(api.events.adminListEvents, {});
+      return (snakeize<Event[]>(data) || []) as unknown as Event[];
+    } catch (e) {
+      // Non-admins fall back to their own manageable set.
+      if (String((e as Error)?.message).includes("FORBIDDEN")) {
+        return this.listOrganizerEvents();
+      }
+      throw e;
+    }
   },
 
   async getById(id: string): Promise<Event | null> {
-    if (!isSupabaseConfigured) return null;
-    const { data, error } = await supabase
-      .from('events')
-      .select('*, venue:venues(*), organizer:organizers(*), ticket_types(*)')
-      .eq('id', id)
-      .single();
-
-    if (error) return null;
-    return data as unknown as Event;
+    if (!isConvexConfigured) return null;
+    const data = await (await authedClient()).query(api.events.getPublicEvent, { eventId: id } as any);
+    if (!data) return null;
+    const shaped = snakeize<any>(data);
+    return {
+      ...shaped.event,
+      venue: shaped.venue,
+      organizer: shaped.organizer,
+      ticket_types: shaped.ticket_types,
+    } as unknown as Event;
   },
 
-  async createEvent(payload: Partial<Event> & { venue_name?: string; venue_city?: string }): Promise<Event> {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase is not configured. Connect database credentials to save events.');
+  async createEvent(
+    payload: Partial<Event> & { venue_name?: string; venue_city?: string },
+  ): Promise<Event> {
+    if (!isConvexConfigured) {
+      throw new Error("Convex is not configured. Connect the backend to save events.");
     }
+    const client = await authedClient();
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('You must be signed in to create an event.');
-    }
-
-    let organizerId = payload.organizer_id;
-
+    let organizerId = (payload as any).organizer_id as string | undefined;
     if (!organizerId) {
-      // events_insert RLS requires an ACTIVE organizer_members row; a client-created
-      // organizer can never satisfy it (organizer_members_manage is members/admin only).
-      const { data: membership } = await supabase
-        .from('organizer_members')
-        .select('organizer_id')
-        .eq('user_id', user.id)
-        .eq('status', 'ACTIVE')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!membership) {
+      const mine = await client.query(api.organizers.listMyOrganizers, {});
+      const active = (mine as any[])[0];
+      if (!active) {
         throw new Error(
-          'No active organizer membership for your account. Ask an existing organizer owner or an admin to add you before creating events.'
+          "No active organizer membership for your account. Bootstrap an organizer first.",
         );
       }
-      organizerId = membership.organizer_id;
+      organizerId = active.organizer.id as string;
     }
 
-    let venueId = payload.venue_id;
+    let venueId = (payload as any).venue_id as string | undefined;
     if (!venueId && (payload.venue_name || payload.venue_city)) {
-      const { data: newVenue, error: venueErr } = await supabase
-        .from('venues')
-        .insert({
-          name: payload.venue_name || 'Main Event Grounds',
-          city: payload.venue_city || 'Bengaluru',
-        })
-        .select('id')
-        .single();
-      if (!venueErr && newVenue) {
-        venueId = newVenue.id;
-      }
+      venueId = (await client.mutation(api.events.createVenue, {
+        name: payload.venue_name || "Main Event Grounds",
+        city: payload.venue_city || "Bengaluru",
+      } as any)) as unknown as string;
     }
 
-    const { venue_name, venue_city, ...eventFields } = payload;
+    const eventId = (await client.mutation(api.events.createEvent, {
+      organizerId: organizerId!,
+      name: payload.name || "Untitled event",
+      shortDescription:
+        payload.short_description ||
+        (payload.description ? payload.description.slice(0, 140) : payload.name || ""),
+      description: payload.description || "",
+      category: payload.category || "OTHER",
+      coverImageUrl: (payload as any).cover_image_url,
+      format: (payload.format as "PHYSICAL" | "ONLINE" | "HYBRID") || "PHYSICAL",
+      visibility: (payload as any).visibility || "PUBLIC",
+      venueId,
+      startAt: new Date((payload as any).start_at).getTime(),
+      endAt: new Date((payload as any).end_at).getTime(),
+      doorsOpenAt: (payload as any).doors_open_at
+        ? new Date((payload as any).doors_open_at).getTime()
+        : undefined,
+      capacity: (payload as any).capacity,
+    } as any)) as unknown as string;
 
-    const eventRecord = {
-      ...eventFields,
-      organizer_id: organizerId,
-      created_by: user.id,
-      venue_id: venueId,
-      format: payload.format || 'PHYSICAL',
-      short_description: payload.short_description || (payload.description ? payload.description.slice(0, 140) : payload.name || ''),
-      status: payload.status || 'DRAFT',
-    };
-
-    const { data, error } = await supabase
-      .from('events')
-      .insert([eventRecord])
-      .select('*, venue:venues(*), organizer:organizers(*)')
-      .single();
-
-    if (error) throw error;
-    return data as unknown as Event;
+    const created = await client.query(api.events.getPublicEvent, { eventId } as any);
+    if (!created) {
+      // Drafts are not publicly readable — return the minimum shape.
+      return {
+        id: eventId,
+        organizer_id: organizerId,
+        venue_id: venueId,
+        ...payload,
+      } as unknown as Event;
+    }
+    const shaped = snakeize<any>(created);
+    return {
+      ...shaped.event,
+      venue: shaped.venue,
+      organizer: shaped.organizer,
+      ticket_types: shaped.ticket_types,
+    } as unknown as Event;
   },
 
   async updateEvent(id: string, updates: Partial<Event>): Promise<Event> {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase is not configured.');
-    }
-    const { data, error } = await supabase
-      .from('events')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as unknown as Event;
+    if (!isConvexConfigured) throw new Error("Convex is not configured.");
+    const client = await authedClient();
+    await client.mutation(api.events.updateEvent, {
+      eventId: id,
+      name: updates.name,
+      shortDescription: (updates as any).short_description,
+      description: updates.description,
+      category: updates.category,
+      coverImageUrl: (updates as any).cover_image_url,
+      format: updates.format as any,
+      visibility: (updates as any).visibility as any,
+      venueId: (updates as any).venue_id,
+      startAt: (updates as any).start_at ? new Date((updates as any).start_at).getTime() : undefined,
+      endAt: (updates as any).end_at ? new Date((updates as any).end_at).getTime() : undefined,
+      doorsOpenAt: (updates as any).doors_open_at
+        ? new Date((updates as any).doors_open_at).getTime()
+        : undefined,
+      capacity: (updates as any).capacity,
+    } as any);
+    const fresh = await client.query(api.events.getPublicEvent, { eventId: id } as any);
+    if (!fresh) return { ...updates, id } as unknown as Event;
+    const shaped = snakeize<any>(fresh);
+    return { ...shaped.event, venue: shaped.venue, organizer: shaped.organizer } as unknown as Event;
   },
 
   async updateEventStatus(id: string, status: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase is not configured.');
+    if (!isConvexConfigured) throw new Error("Convex is not configured.");
+    if (status === "CANCELLED") {
+      (await authedClient()).mutation(api.staff.cancelEvent, { eventId: id } as any);
+      return;
     }
-    const { error } = await supabase
-      .from('events')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', id);
-
-    if (error) throw error;
+    throw new Error(
+      `Status transition to ${status} must go through the lifecycle actions (transitionEvent).`,
+    );
   },
 
-  // Lifecycle transitions go through the DB RPCs — they enforce status, role and audit.
-  // Raw updateEventStatus remains only for CANCELLED, which has no RPC.
-  async transitionEvent(id: string, action: 'submit' | 'publish' | 'open_sales' | 'close_sales'): Promise<void> {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase is not configured.');
-    }
-    const rpcName = {
-      submit: 'submit_event',
-      publish: 'publish_event',
-      open_sales: 'open_sales',
-      close_sales: 'close_sales',
+  // Lifecycle transitions — enforced server-side (status, role, audit).
+  async transitionEvent(
+    id: string,
+    action: "submit" | "publish" | "open_sales" | "close_sales",
+  ): Promise<void> {
+    if (!isConvexConfigured) throw new Error("Convex is not configured.");
+    const client = await authedClient();
+    const fn = {
+      submit: api.events.submitEvent,
+      publish: api.events.publishEvent,
+      open_sales: api.events.openSales,
+      close_sales: api.events.closeSales,
     }[action];
-    const { error } = await supabase.rpc(rpcName, { p_event_id: id });
-    if (error) throw error;
+    await client.mutation(fn, { eventId: id } as any);
   },
 
   async adminReviewEvent(id: string, approve: boolean, reason?: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      throw new Error('Supabase is not configured.');
-    }
-    const { error } = await supabase.rpc('admin_review_event', {
-      p_event_id: id,
-      p_approve: approve,
-      p_reason: reason ?? null,
-    });
-    if (error) throw error;
+    if (!isConvexConfigured) throw new Error("Convex is not configured.");
+    (await authedClient()).mutation(api.events.adminReviewEvent, {
+      eventId: id,
+      approve,
+      reason,
+    } as any);
   },
 };

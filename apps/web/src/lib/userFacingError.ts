@@ -1,4 +1,4 @@
-const TECHNICAL = /postgrest|pgrst|sqlstate|postgres|stack trace|supabase/i;
+const TECHNICAL = /sqlstate|stack trace|convex|postgrest|postgres/i;
 
 // Machine-readable codes raised by reserve_booking / confirm_free_booking.
 const RPC_CODES: Record<string, string> = {

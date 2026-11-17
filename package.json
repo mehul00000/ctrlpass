@@ -13,5 +13,8 @@
     "typecheck:web": "npm run typecheck --workspace=apps/web",
     "typecheck:mobile": "npm run typecheck --workspace=apps/mobile",
     "typecheck": "npm run typecheck:web && npm run typecheck:mobile"
+  },
+  "dependencies": {
+    "convex": "^1.50.0"
   }
 }

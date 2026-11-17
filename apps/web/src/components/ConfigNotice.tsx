@@ -9,22 +9,18 @@ export default function ConfigNotice() {
 
       <div className="min-w-0">
         <p className="text-sm font-semibold text-[#F5F5F2]">
-          Supabase configuration required
+          Convex configuration required
         </p>
 
         <p className="mt-1 text-xs leading-relaxed text-[#A7A39B]">
-          CtrlPass is running against the live schema with no mock fallback.
-          Configure the required Supabase environment variables to enable
+          CtrlPass is running against the live backend with no mock fallback.
+          Configure the required Convex environment variable to enable
           production database operations.
         </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <code className="rounded-lg border border-white/[0.07] bg-[#080808] px-2 py-1 font-mono text-[10px] text-[#D6B47A]">
-            NEXT_PUBLIC_SUPABASE_URL
-          </code>
-
-          <code className="rounded-lg border border-white/[0.07] bg-[#080808] px-2 py-1 font-mono text-[10px] text-[#D6B47A]">
-            NEXT_PUBLIC_SUPABASE_ANON_KEY
+            NEXT_PUBLIC_CONVEX_URL
           </code>
 
           <span className="text-[10px] text-[#77736C]">

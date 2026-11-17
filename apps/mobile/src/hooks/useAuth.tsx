@@ -6,16 +6,16 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { useClerk, useUser } from '@clerk/expo';
+import { useAuth as useClerkAuth, useClerk, useUser } from '@clerk/expo';
 
-import { isSupabaseConfigured } from '../config/env';
+import { setClerkTokenProvider, isBackendConfigured, authedClient } from '../lib/convex';
+import { api } from '../../../../convex/_generated/api';
 import type { Profile, UserRole } from '../types';
 
 /**
- * Application session — deliberately decoupled from Clerk/Supabase types so
- * screens keep working regardless of the identity provider behind the hook.
- * `user.id` is the CLERK user id; it is NOT a Supabase auth UUID and must not
- * be written into UUID-keyed database columns (identity mapping = Phase 3).
+ * Application session — Clerk identity + Convex profile/roles.
+ * `user.id` is the Clerk user id; the Convex app_users row is mapped from it
+ * server-side (get-or-create on every authenticated call).
  */
 export interface AppSessionUser {
   id: string;
@@ -54,8 +54,7 @@ const DEFAULT_AUTH_VALUE: AuthValue = {
   signOut: async () => {},
 };
 
-const AuthContext =
-  createContext<AuthValue>(DEFAULT_AUTH_VALUE);
+const AuthContext = createContext<AuthValue>(DEFAULT_AUTH_VALUE);
 
 export function AuthProvider({
   children,
@@ -63,40 +62,71 @@ export function AuthProvider({
   children: React.ReactNode;
 }) {
   const clerk = useClerk();
+  const clerkAuth = useClerkAuth();
   const { isLoaded, isSignedIn, user } = useUser();
 
   const [loading, setLoading] = useState(true);
-
-  const [profile] = useState<Profile | null>(null);
-
-  const [accountStatus] = useState<string | null>('ACTIVE');
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [accountStatus, setAccountStatus] = useState<string | null>('ACTIVE');
+  const [backendRoles, setBackendRoles] = useState<UserRole[]>([]);
 
   /*
-   * Keep this fail-open during migration exactly as the
-   * existing application intends.
-   *
-   * Once consent enforcement is fully deployed, this should
-   * be changed to fail-closed.
+   * Consent is fail-open during migration, matching the existing flow.
+   * Change to fail-closed once consent enforcement ships fully.
    */
   const [consentAccepted, setConsentAccepted] = useState(true);
 
-  const configured = isSupabaseConfigured();
+  const configured = isBackendConfigured();
 
-  /*
-   * PHASE 3 PENDING — identity mapping:
-   *
-   * profiles / user_roles / user_consents are keyed by Supabase auth UUIDs and
-   * RLS still expects auth.uid(). A Clerk id is not a UUID, so database
-   * identity queries are intentionally NOT performed here: doing so would
-   * either error (invalid uuid) or blindly write Clerk ids into UUID columns.
-   * Until the mapping ships, every signed-in user gets the ATTENDEE fallback
-   * role and no profile — same treatment the original flow gave a fresh user.
-   */
+  // Register the Clerk token provider so services can call Convex with auth.
   useEffect(() => {
-    if (isLoaded) {
+    setClerkTokenProvider(async () => {
+      try {
+        return await clerkAuth.getToken({ template: 'convex' });
+      } catch {
+        return null;
+      }
+    });
+  }, [clerkAuth]);
+
+  // Load profile + roles from the Convex backend (get-or-create app user).
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn || !configured) {
+      setProfile(null);
+      setBackendRoles(sessionLessRoles(isSignedIn));
       setLoading(false);
+      return;
     }
-  }, [isLoaded]);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const me: any = await (await authedClient()).query(api.users.me, {});
+        if (cancelled) return;
+        setProfile((me?.profile ?? null) as Profile | null);
+        setAccountStatus(me?.user?.status ?? 'ACTIVE');
+        setBackendRoles((me?.roles ?? []).map((r: any) => r.role as UserRole));
+        // Activate pending volunteer invitations matching this email.
+        try {
+          await (await authedClient()).mutation(api.volunteers.acceptMyInvitations, {});
+        } catch {
+          // non-fatal
+        }
+      } catch {
+        if (!cancelled) {
+          setProfile(null);
+          setBackendRoles(sessionLessRoles(true));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, user?.id, configured]);
 
   const session = useMemo<AppSession | null>(() => {
     if (!isSignedIn || !user) return null;
@@ -114,8 +144,8 @@ export function AuthProvider({
   }, [isSignedIn, user]);
 
   const roles = useMemo<UserRole[]>(
-    () => (session ? ['ATTENDEE'] : []),
-    [session],
+    () => (session ? (backendRoles.length ? backendRoles : ['ATTENDEE']) : []),
+    [session, backendRoles],
   );
 
   const acceptConsent = useCallback(() => {
@@ -135,13 +165,15 @@ export function AuthProvider({
       await clerk.signOut();
     } finally {
       setConsentAccepted(true);
+      setProfile(null);
+      setBackendRoles([]);
     }
   }, [clerk]);
 
   const value = useMemo<AuthValue>(
     () => ({
       session,
-      loading,
+      loading: isLoaded ? (isSignedIn && configured ? loading : false) : true,
       profile,
       roles,
       accountStatus,
@@ -154,22 +186,24 @@ export function AuthProvider({
     [
       session,
       loading,
+      isLoaded,
+      isSignedIn,
+      configured,
       profile,
       roles,
       accountStatus,
       consentAccepted,
       acceptConsent,
-      configured,
       refresh,
       signOut,
     ],
   );
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function sessionLessRoles(signedIn: boolean): UserRole[] {
+  return signedIn ? ['ATTENDEE'] : [];
 }
 
 export function useAuth(): AuthValue {
